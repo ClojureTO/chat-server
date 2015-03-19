@@ -7,21 +7,30 @@ This is a skeleton project for a chat server we'll use to build a chat client an
 
 To start we'll work in groups on implementing a very basic server that listens on a socket and routes messages, and a client that can talk to it.
 
-Start by implementing the protocol below. Don't worry about concurrency yet! The library included in this skeleton project `clj-sockets` is synchronous, so no need to read up on Clojure concurrency primitives or core.async channels. Start with a synchronous server, and we'll make it async next week.
+Start by implementing the protocol below. We are using a single `ref` to handle shared state. In the future, we will port this code over to use `core.async`
 
 ### The Protocol
 - It's a line based protocol. Newline signifies end of message
-- channel and nicknames can contain only `[a-z|A-Z|0-9|-+]`,
-- channel names must begin with #,
+- nicknames can contain only `[a-z|A-Z|0-9|-+]`,
 - usernames can begin with any character other then #
 - After connecting, each user sends `USER nickname` as their first command
-- At first there's only one channel, `#general`, we'll add more later!
-- Messaging a user is done with `MSG nickanme message`
-- Messaging a channel is done with `MSG #channel message`
+- Messaging is done with `MSG message`
+
 
 ### Goals for Week 1
-- Get a feel for working with a project larger then one function
-- Write a couple of tests (either with [clojure.test](https://clojure.github.io/clojure/clojure.test-api.html) or [midje](https://github.com/marick/Midje)).
-- Try to practice REPL-driven development
-- Think about how to organize code into namespaces
-- Have fun!!!
+The skeleton code implements a simple chat server. This week you should:
+- Understand the server code (we'll go over it together)
+- Talk to the server using [netcat](http://en.wikipedia.org/wiki/Netcat)
+- Start by writing a separate program to function as a client. It should allow the user to specify a server/port and nickname as command line args (Run `lein new app chat-client` to create a new app skeleton)
+- Implement private messaging in the server
+- Bonus points if the client can connect to multiple servers at once
+
+
+## Goals for the future
+- Add support for channels, which start with #
+- Automatically place users in #general and allow users to join and leave channels with `JOIN #channel` and `LEAVE #channel`
+- Update messaging syntax to be `MSG #channel message`
+- Devise a mechanism for the client to be on multiple channels at once
+- Add support for changing nicknames
+- Migrate to core.aync
+- Replace sockets with websockets and write a web UI in cljs
