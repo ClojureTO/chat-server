@@ -8,27 +8,30 @@
 (defn serve-client
   [nick client]
   (doseq [line (socket/read-lines client)]
+    (println "got message from user:" line)
     (let [other-clients (vals (dissoc @clients nick))]
-      (case (first (clojure.string/split line #" "))
+      (case
+        (first (clojure.string/split line #" "))
         ;; Instructor Note: explain why a doall is needed here
         "MSG" (doall (map #(socket/write-line % (str nick ": " (subs line 4))) other-clients))
 
-        ;;TODO: Process other kinds of command here 
-        
+        ;;TODO: Process other kinds of command here
+
         ;; else
         (socket/write-line client "ERROR: I don't understand")))))
 
 (defn new-client
   [client]
   (let [command (socket/read-line client)]
+    (println "got message:" command)
     (if-let [[_ nick] (re-matches #"USER (.*)" command)]
       ;; Instructor note: explain why we have to use a transaction here to make sure checking if user exists and adding them happens atomically
       (if (dosync
            (when-not (get @clients nick)
              (alter clients assoc nick client)))
-        
+
         (serve-client nick client)
-        
+
         (do
           (socket/write-line client "ERROR: Nick already taken")
           (socket/close-socket client))))))
