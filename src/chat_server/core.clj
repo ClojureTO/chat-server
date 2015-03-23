@@ -1,5 +1,6 @@
 (ns chat-server.core
-  (:require [clj-sockets.core :as socket])
+  (:require [clj-sockets.core :as socket]
+            [chat-server.repl :as repl])
   (:gen-class))
 
 (def clients (ref {}))
@@ -42,6 +43,7 @@
   (let [port 1234
         server-socket (socket/create-server port)]
     (println "Listening on port" port)
+    (repl/start-repl 7001)
     (loop [client (socket/listen server-socket)]
       ;; TODO: improve debugging inside this future
       (future (new-client client))
