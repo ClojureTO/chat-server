@@ -1,9 +1,9 @@
 (ns chat-server.core
   (:require [chat-server.server :as server]
-            [clj-sockets.core :as socket]
             [chat-server.repl :as repl]
             [clojure.string :as string]
             [clojure.tools.cli :as cli])
+  (:import (java.net ServerSocket))
   (:gen-class))
 
 (def cli-options
@@ -45,12 +45,12 @@
       errors (exit 1 (error-msg errors))
 
       :else
-      (let [server-socket (socket/create-server (:port options))
+      (let [server-socket (ServerSocket. (:port options))
             repl-options {:port (:repl-port options)
                           :middleware (:repl-middleware options)}]
         (repl/start-repl repl-options)
         (println "Listening on port" (:port options))
-        (loop [client (socket/listen server-socket)]
+        (loop [client (.accept server-socket)]
           ;; TODO: improve debugging inside this future
           (future (server/new-client client))
-          (recur (socket/listen server-socket)))))))
+          (recur (.accept server-socket)))))))
