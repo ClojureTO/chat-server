@@ -1,104 +1,56 @@
 (ns chat-server.core
-  (:require [clj-sockets.core :as socket]
+  (:require [chat-server.server :as server]
             [chat-server.repl :as repl]
-            [clojure.string :as string])
+            [clojure.string :as string]
+            [clojure.tools.cli :as cli])
+  (:import (java.net ServerSocket))
   (:gen-class))
 
-(def clients (ref []))
+(def cli-options
+  [["-p" "--port PORT" "Port to listen for client connections on"
+    :default 1234
+    :parse-fn #(Integer/parseInt %)]
+   ["-r" "--repl-port PORT" "Port to start a REPL on"
+    :default 7001
+    :parse-fn #(Integer/parseInt %)]
+   ["-m" "--repl-middleware MIDDLEWARE" "REPL Middleware to load (currently only 'cider' supported)"
+    :default :none
+    :parse-fn #(keyword %)]
+   ["-h" "--help" "Print this helpful text"]])
 
-(defn write-line
-  "Write a single message to a client, returning the client."
-  [client message]
-  (socket/write-line (:socket client) message)
-  client)
+(defn usage [options-summary]
+  (->> ["This is the simplest chat server in the world."
+        ""
+        "Usage: lein run -- [-p port] [-r repl-port] [-m middleware]"
+        ""
+        "Options:"
+        options-summary]
+       (string/join \newline)))
 
-(defn error
-  "Write an error to a socket, returning nil."
-  [socket message]
-  (socket/write-line socket (str "ERROR: " message)))
+(defn error-msg [errors]
+  (str "Error parsing command line:\n\n"
+       (string/join \newline errors)))
 
-(defn nick-exists?
-  "Return truthy if a nick is already in use, otherwise nil."
-  [nick]
-  (let [nicks (map #(-> % deref :nick) @clients)]
-    (some #{nick} nicks)))
-
-(defn set-nick
-  "Set the nick of an existing client. This function is transactional."
-  [client nick]
-  (dosync
-   (if (nick-exists? nick)
-     (error (:socket @client) "nick already exists")
-     (send-off client assoc :nick nick))))
-
-(defn send-message
-  "Send a message to all clients but the originating one."
-  [client message]
-  (doseq [d-client @clients]
-    (when-not (= client d-client)
-      (send-off d-client write-line (str (:nick @client) ": " message)))))
-
-(defn terminate-client!
-  "Close the socket and remove the client from the list."
-  [client]
-  (try
-    (socket/close-socket (:socket @client))
-    (dosync
-     (alter clients (partial remove #{client})))
-    (catch Throwable e
-      (println (.getMessage e)))))
-
-(defn listen-client
-  "Listen for and dispatch incoming messages from a client."
-  [client]
-  (let [{:keys [socket nick channels] :or {channels []}} @client]
-    (loop [line (socket/read-line socket)]
-      (let [[command & words] (string/split line #" ")]
-        (case command
-          "USER" (set-nick client (string/join "-" words))
-          "MSG" (send-message client (string/join " " words))
-          "QUIT" (terminate-client! client)
-          (error socket "I don't understand")))
-      (when-not (.isClosed socket)
-        (recur (socket/read-line socket))))))
-
-(defn handle-client-error
-  "Handle a client error."
-  [the-agent exception]
-  (let [s (:socket @the-agent)
-        msg (.getMessage exception)]
-    (when-not (.isClosed s)
-      (error s msg))
-    (println msg)
-    (terminate-client! the-agent)))
-
-(defn new-client
-  "Takes a freshly opened socket connection, creates a new client and
-  calls the dispatcher."
-  [s]
-  (loop [line (socket/read-line s)]
-    (if-let [[_ nick] (re-matches #"USER (.*)" line)]
-      (if-let [client (dosync
-                       (when-not (nick-exists? nick)
-                         (let [client (agent {:socket s :nick nick :channels []}
-                                             :error-mode :continue
-                                             :error-handler handle-client-error)]
-                           (alter clients conj client)
-                           client)))]
-        (listen-client client)
-        (do (error s "nick is already taken, try another")
-            (recur (socket/read-line s))))
-      (do (error s "first set a nick with USER")
-          (recur (socket/read-line s))))))
+(defn exit [status msg]
+  (println msg)
+  (System/exit status))
 
 (defn -main
   "The hello world of chat servers"
   [& args]
-  (let [port 1234
-        server-socket (socket/create-server port)]
-    (println "Listening on port" port)
-    (repl/start-repl 7001)
-    (loop [client (socket/listen server-socket)]
-      ;; TODO: improve debugging inside this future
-      (future (new-client client))
-      (recur (socket/listen server-socket)))))
+  (let [{:keys [options arguments errors summary]} (cli/parse-opts args cli-options)]
+    (cond
+      (:help options) (exit 0 (usage summary))
+      (not= (count arguments) 0) (exit 1 (usage summary))
+      errors (exit 1 (error-msg errors))
+
+      :else
+      (let [server-socket (ServerSocket. (:port options))
+            repl-options {:port (:repl-port options)
+                          :middleware (:repl-middleware options)}]
+        (repl/start-repl repl-options)
+        (println "Listening on port" (:port options))
+        (loop [client (.accept server-socket)]
+          ;; TODO: improve debugging inside this future
+          (future (server/new-client client))
+          (recur (.accept server-socket)))))))
