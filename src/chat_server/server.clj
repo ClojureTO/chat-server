@@ -25,6 +25,9 @@
     (when-not (= client d-client)
       (send-off d-client write-line (str (:nick @client) ": " message)))))
 
+(defn reply [client message]
+  (send-off client write-line message))
+
 (defn terminate-client!
   "Close the connections and remove the client from the list."
   [client]
@@ -57,6 +60,7 @@
     (loop [line (.readLine reader)]
       (if-let [[command & words] (and line (string/split line #" "))]
         (do (case command
+              "LIST" (reply client (clojure.string/join " " (map #(-> % deref :nick) @clients)))
               "USER" (set-nick client (string/join "-" words))
               "MSG" (send-message client (string/join " " words))
               "QUIT" (terminate-client! client)
